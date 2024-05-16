@@ -5,7 +5,7 @@
 
 app:
   # server:
-  # baseUri: https://evil-cows-return.loca.lt
+  baseUri: https://cdmv-api.dev.furo.one
   opencred:
     didWeb:
       mainEnabled: true
