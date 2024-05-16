@@ -4,8 +4,8 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 app:
-  # server:
-  baseUri: https://cdmv-api.dev.furo.one
+  server:
+    baseUri: https://cdmv-api.dev.furo.one
   opencred:
     didWeb:
       mainEnabled: true
