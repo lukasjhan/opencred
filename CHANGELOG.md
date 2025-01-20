@@ -1,5 +1,163 @@
 # opencred-platform Changelog
 
+## 8.6.0 - 2024-09-23
+
+### Added
+- Add `caStore` to relying party config.
+
+### Changed
+- Make x5c check conditional for Entra exchange.
+- Add config-based override for x5c enforcement to native exchange.
+
+## 8.5.0 - 2024-09-19
+
+### Added
+- Log Entra callback explicitly.
+
+## 8.4.3 - 2024-09-18
+
+### Fixed
+- Remove success log event for Entra callback error.
+- Remove extra error log event for Entra callback error.
+
+## 8.4.2 - 2024-09-13
+
+### Fixed
+- Redact callback error log.
+
+## 8.4.1 - 2024-09-12
+
+### Fixed
+- Report error upon encountering a callback error.
+
+## 8.4.0 - 2024-09-11
+
+### Added
+- Add logging for successful and failed presentation attempts.
+- Add Entra verification callback logs.
+
+## 8.3.0 - 2024-08-14
+
+### Added
+- Add additional validation for trusted issuers.
+- Add X.509 validation to Entra workflows, in case Entra doesn't do it natively.
+- Make exchange error title and subtitle messages configurable.
+- Make reset title message configurable.
+- Make exchange active expiry time configurable.
+- Render exchange active expiry time in UI.
+
+### Changed
+- Replace `decodeJwtPayload` with `jose.decodeJwt`.
+
+## 8.2.1 - 2024-07-25
+
+### Fixed
+- Fix breaking change in `BaseWorkflowService.getExchange`.
+
+## 8.2.0 - 2024-07-17
+
+### Added
+- Add support for config validation and VS Code schema-based config completion.
+- Add default values for audit fields.
+
+### Fixed
+- Avoid reCaptcha timeout by waiting to invoke it until the user submits.
+- Enable user to reset exchange from failed back to pending to try submitting
+  again.
+- Fix Entra security bug, by using a different secret access token for an
+  exchange's verification callback endpoint.
+
+### Changed
+- Changed cookie timeout from 15m to 1m
+- Exchange is updated to invalid state upon invalid JWT presentation.
+  (resettable)
+- Removed development-only optional `credentialVerificationCallbackAuthEnabled`
+  Entra workflow configuration option.
+
+## 8.1.1 - 2024-07-08
+
+### Changed
+- Updated `credential-handler-polyfill` to released version.
+
+### Fixed
+- End the spinner if the exchange fails (enters an invalid state), and show an
+  error message.
+
+## 8.1.0 - 2024-07-02
+
+### Added
+- Add better reCAPTCHA logging to audit feature.
+
+### Fixed
+- Add missing return statement to /context/verification endpoint.
+
+## 8.0.0 - 2024-07-02
+
+### Added
+- Add tutorial documents.
+- Add logo to README.
+- Add reCAPTCHA to the audit form.
+
+### Changed
+- Use red asterisks to denote required fields in the audit form.
+- Changed example config to show "steps" in Entra config.
+- Compress audit config fields into single object.
+- Enabled more precise control of text when switching OID4VP views.
+
+### Fixed
+- Updated `credential-handler-polyfill` to experimental branch to incorporate
+  module change.
+- Remove all whitespace from VP token before submitting audit.
+
+## 7.2.5 - 2024-05-24
+
+### Fixed
+- Fixed another bug with old spinner showing in mobile view.
+
+## 7.2.4 - 2024-05-23
+
+### Fixed
+- Fixed old spinner showing in mobile view.
+
+## 7.2.3 - 2024-05-23
+
+### Changed
+- Improve error handling in config validation.
+
+### Fixed
+- Fix missing "step" functionality in Entra flow.
+
+## 7.2.2 - 2024-05-23
+
+### Fixed
+- Fix ability to create a new authorization request when in mobile active state.
+
+## 7.2.1 - 2024-05-15
+
+### Fixed
+- Fix `client_id` requirement on `/config/app.json`.
+
+## 7.2.0 - 2024-05-15
+
+### Added
+- Add RP specific translations override.
+
+## 7.1.1 - 2024-05-14
+
+### Fixed
+- Apply fixes to the `authorization.js` config.
+
+## 7.1.0 - 2024-05-14
+
+### Added
+- Add support for dropdown audit fields.
+- Add new verification page.
+- Add `untrustedVariableAllowList` to a workflow to allow specific custom
+  variables to be provided via untrusted user input.
+- Add callbacks to workflow steps.
+- Add new `active` state once authorization request has been retrieved.
+- Add button view in mobile view with QR code option.
+
 ## 7.0.0 - 2024-04-30
 
 ### Changed

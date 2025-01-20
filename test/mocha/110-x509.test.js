@@ -8,7 +8,11 @@
 import * as sinon from 'sinon';
 import fs from 'node:fs';
 
-import {extractCertsFromX5C, verifyChain} from '../../common/x509.js';
+import {
+  allowAnyCA,
+  extractCertsFromX5C,
+  verifyChain
+} from '../../common/x509.js';
 import {config} from '@bedrock/core';
 import expect from 'expect.js';
 import {generateCertificateChain} from '../utils/x509.js';
@@ -210,5 +214,29 @@ describe('x509', async () => {
       ]});
 
     should.not.exist(certs);
+  });
+
+  describe('Configuration', function() {
+    describe('allowAnyCA', function() {
+      it('should return false if caStore undefined by rp', function() {
+        const rpConfig = {
+          clientId: 'test_rp'
+        };
+
+        const result = allowAnyCA(rpConfig);
+
+        expect(result).to.be(false);
+      });
+      it('should return true if caStore defined by rp as "false"', function() {
+        const rpConfig = {
+          clientId: 'test_rp',
+          caStore: false
+        };
+
+        const result = allowAnyCA(rpConfig);
+
+        expect(result).to.be(true);
+      });
+    });
   });
 });

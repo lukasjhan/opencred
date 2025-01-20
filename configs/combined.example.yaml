@@ -119,9 +119,22 @@ app:
         workflow:
           type: native
           id: z1A32xJZGqBeAEcMq56avmw2L
+          untrustedVariableAllowList:
+            - exampleParam
+            - exampleParam2
           initialStep: default
           steps:
             default:
+              callback:
+                url: http://localhost:9000/callback
+                headersVariable: callbackHeaders
+                oauth:
+                  issuer: http://example.com
+                  token_url: http://example.com/token
+                  client_secret: exampleClientSecret
+                  client_id: exampleClientId
+                  scope:
+                    - default
               createChallenge: true
               verifiablePresentationRequest: >
                 {
@@ -176,12 +189,15 @@ app:
           baseUrl: https://example.org/exchanges/123
           capability: "example"
           clientSecret: "example"
-      - client_id: 4e3a8b7b4b7b4b7b4b7b
+      - clientId: 4e3a8b7b4b7b4b7b4b7b
         # Microsoft Entra Verified Id workflow config
         # Many of these config fields map to request fields in the APIs linked below:
         #   https://learn.microsoft.com/en-us/entra/verified-id/get-started-request-api
         #   https://learn.microsoft.com/en-us/entra/verified-id/presentation-request-api
-        configFrom: 32bb6cec384b # client_id of another relying party to serve as default values
+        caStore: false
+        configFrom: 32bb6cec384b # clientId of another relying party to serve as default values
+        trustedCredentialIssuers:
+          - did:web:example.com
         workflow:
           type: microsoft-entra-verified-id
           apiBaseUrl: https://api.entra.microsoft.example.com/v1.0 # required (will generally be https://verifiedid.did.msidentity.com/v1.0)
@@ -191,13 +207,14 @@ app:
           apiTenantId: "TODO" # required
           verifierDid: "TODO" # required
           verifierName: "TODO" # required
-          acceptedCredentialType: "TODO" # required
-          credentialVerificationCallbackAuthEnabled: true # optional (default populated in middleware unless overridden here)
-          acceptedCredentialIssuers: [] # optional (default populated in middleware unless overridden here)
           credentialVerificationPurpose: "So that we can evaluate your permission to access the requested resource" # optional (default populated in middleware unless overridden here)
           allowRevokedCredentials: false # optional (default populated in middleware unless overridden here)
           validateLinkedDomain: false # optional (default populated in middleware unless overridden here)
           includeQrCode: true # optional (default populated in middleware unless overridden here)
+          initialStep: default
+          steps:
+            default:
+              acceptedCredentialType: "TODO" # required
       - name: "load-test"
         clientId: "load-test"
         clientSecret: "DeepestAndDarkest"
@@ -259,23 +276,54 @@ app:
       cta: "#0B669D"
       primary: "#045199"
       header: "#0979c4"
-    enableAudit: true
-    auditFields:
-      - type: text
-        id: given_name
-        name: First Name
-        path: "$.credentialSubject.given_name"
-        required: true
-      - type: text
-        id: family_name
-        name: Last Name
-        path: "$.credentialSubject.family_name"
-        required: false
-      - type: date
-        id: birth_date
-        name: Date of Birth
-        path: "$.credentialSubject.birth_date"
-        required: true
+    audit:
+      enable: true
+      fields:
+        - type: text
+          id: given_name
+          name: First Name
+          path: "$.credentialSubject.given_name"
+          required: true
+        - type: text
+          id: family_name
+          name: Last Name
+          path: "$.credentialSubject.family_name"
+          required: false
+        - type: date
+          id: birth_date
+          name: Date of Birth
+          path: "$.credentialSubject.birth_date"
+          required: true
+        - type: number
+          id: height
+          name:	Height (cm)
+          path: "$.credentialSubject.height"
+          required: false
+        - type: dropdown
+          id: sex
+          name:	Sex
+          path: "$.credentialSubject.sex"
+          required: false
+          options:
+            "Male": 1
+            "Female": 2
+        - type: dropdown
+          id: senior_citizen
+          name:	Are you a senior citizen?
+          path: "$.credentialSubject.senior_citizen"
+          required: true
+          options:
+            "Yes": 1
+            "No": null
+          default: "No"
+    reCaptcha:
+      enable: true
+      version: 2
+      siteKey: 6LcNDSjdAAAAAAAAIe2uy0gavf0reiuhfer12345
+      secretKey: 6LcNDSjdAAAAAAAAIe3uy1gavf1reiuhfer67890
+      pages:
+        - audit
+    exchangeActiveExpirySeconds: 300
     defaultLanguage: en
     translations:
       en:
@@ -286,8 +334,7 @@ app:
         qrFooterHelp: Difficulty using the Wallet app to login? revert to using password <a href="#">here</a>
         qrDisclaimer: If you don't have a Wallet app download it from the app store.
         qrExplainerText: (How do I do it?)
-        qrPageAnotherWay: Want to try another way?
-        chapiPageAnotherWay: "Looking for a QR Code to scan with you wallet app instead?"
+        chapiPageAnotherWay: "Looking for a QR code to scan with your wallet app instead?"
         loginCta: "Login with your credential wallet"
         loginExplain: "To login with your credential wallet, you will need to have the credential wallet app <with configurable URL to app stores> installed"
         appInstallExplain: "If you don't have a credential wallet yet, you can get one by downloading the credential wallet app <with configurable URL to app stores>"
@@ -295,3 +342,10 @@ app:
         copyright: "Powered by OpenCred"
         pageTitle: "Login"
         home: "Home"
+        verificationSuccess: "Success! Your credential has been shared."
+        exchangeActiveGoBack: Back
+        exchangeActiveExpiryMessage: "Please complete within the allotted time:"
+        exchangeErrorTitle: Exchange failed
+        exchangeErrorSubtitle: "Error details:"
+        exchangeResetTitle: Please try again.
+        exchangeReset: Retry exchange

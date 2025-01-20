@@ -1,3 +1,5 @@
+![OpenCred Logo](./docs/OpenCred_Logo.png)
+
 # OpenCred: The Open Credentials Platform
 
 OpenCred is a system designed to make it easy for organizations (verifiers) to
@@ -30,20 +32,23 @@ OpenCred supports the following list of features:
 * Native/local verifier support that is not dependent on any external services.
 * Remote/external verifier support using either the Verifiable Credential
   Verification API (VC API) or Microsoft Entra
-* Storage of historical DID Documents to enable auditing (coming soon)
+* Storage of historical DID Documents to enable auditing of past presentations.
 
 ## Usage
 
 ### Configuration
 
-The app is configured via a YAML file. See
-[configs/config.example.yaml](configs/config.example.yaml) for an example.
+The app is configured via a YAML file compatible with 
+[@bedrock/config-yaml](https://www.npmjs.com/package/@bedrock/config-yaml). See
+[configs/combined.example.yaml](configs/combined.example.yaml) for an example.
 
-Copy the example to the config location `cp configs/config.example.yaml
-/etc/bedrock-config/combined.yaml` and edit the file. Configure the details of
-your relying party.
+Copy the example to the default config location `cp configs/combined.example.yaml
+configs/combined.yaml` and edit the file. Configure the details for your relying
+party and any of the OpenCred features below.
 
-#### Configure with an Environment Variable
+> 💡 **Tip:** When using VS Code with the YAML extension, you'll get type hints
+> as you edit your `configs/combined.yaml` file.
+
 If a `BEDROCK_CONFIG` environment variable is set, the config specified in
 the environment variable will supersede any file based configuration. The
 environment variable must be a Base64 encoded string based on a YAML config
@@ -52,11 +57,36 @@ file. The environment variable may be set with the following command:
 export BEDROCK_CONFIG=$(cat combined.yaml | base64)
 ```
 
+#### Optional Config File Validation in VS Code
+
+If you're using VS Code as your editing environment, you can install an
+extension and configure automatic schema validation for your `combined.yaml`
+file. This will provide you with real-time feedback as you type in your
+configuration file. Errors on missing required properties, descriptions and
+example values for configuration fields, auto-complete of fields are supported. 
+
+To configure your VS Code workspace to use auto-completion, install the plugin
+[redhat.vscode-yaml](https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml)
+and add settings to a `.vscode/settings.json` file at the root of this repo. If
+the file does not exist, create it. Add the following content to the file:
+```json
+{
+  "yaml.schemas": {
+    "./configs/combined.schema.json": "combined.yaml"
+  },
+  "yaml.format.enable": true,
+  "yaml.completion": true,
+  "yaml.validate": true,
+  "yaml.format.proseWrap": "preserve",
+  "yaml.format.printWidth": 80
+}
+```
+
 #### Configuring a Native workflow
 
 Update the `relyingParties` section of the config file to include a relying
 party with a workflow of type `native`. The `native` workflow type is used to
-implement a VC-API exchange on this instance of OpenCred. This results in a QR
+implement an OID4VP or VC-API exchange on this instance of OpenCred. This results in a QR
 code being displayed to the user or returned through the initiate exchange API
 endpoint that can be scanned by a wallet app. The wallet app will then present
 the user with a list of credentials that can be used to satisfy the request.
@@ -187,6 +217,56 @@ specify which Verifiable Credential type, context, and/or issuers you will
 accept. This enables the specification of a plaintext `path` relative to
 `credentialSubject` to source the claim value from.
 
+#### Configuring Exchange Variables
+
+It is possible to include additional variables that will be passed along with an
+exchange. These can be passed through to the exchange creation process via query
+parameters or as JSON body properties. It is important to note that these params
+originate from the client side application and so should be treated as
+"untrusted".
+
+While configuring a relying party workflow an `untrustedVariableAllowList`
+property contains a list of variables that are allowed to be passed in this
+manner. There is a default `redirectPath` variable that will always be included.
+
+```yaml
+relyingParties:
+  - clientId: example
+    workflow:
+      type: native
+      id: example-workflow
+      untrustedVariableAllowList:
+        - caseId
+        - color
+```
+
+#### Configuring a Workflow Step
+
+A workflow step configures the specifics of how a presentation is requested.
+The step contains a `verifiablePresentationRequest` which uses a [VPR](https://w3c-ccg.github.io/vp-request-spec/) to create a [Presentation Exchange (PE)](https://identity.foundation/presentation-exchange/) object to be included in the request. If for whatever
+reason the constraints need to be overwritten that can be accomplished using the
+`constraintsOverride` property.
+
+##### Callbacks
+
+A step can also include a callback that will be sent an http POST request with
+the `id`, `variables` and `step` of the exchange. The callback URL can
+optionally be protected by oauth2 and can include headers using a customizable
+variable.
+
+```yaml
+callback:
+  url: http://localhost:9000/callback
+  headersVariable: callbackHeaders
+  oauth:
+    issuer: http://example.com
+    token_url: http://example.com/token
+    client_secret: exampleClientSecret
+    client_id: exampleClientId
+    scope:
+      - default
+```
+
 #### Configuring Exchange UX Methods
 
 OpenCred supports two methods for initiating an exchange with a wallet app,
@@ -228,8 +308,9 @@ translations:
     qrFooterHelp: Difficulty using the Wallet app to login? revert to using password <a href="#">here</a>
     qrDisclaimer: If you don't have a Wallet app download it from the app store.
     qrClickMessage: The Wallet app must be running in the background.
-    qrPageAnotherWay: Want to try another way?
-    chapiPageAnotherWay: "Looking for a QR Code to scan with you wallet app instead?"
+    openid4vpAnotherWay: Want to try another way?
+    openid4vpQrAnotherWay: Use a wallet on this device
+    chapiPageAnotherWay: "Looking for a QR code to scan with your wallet app instead?"
     loginCta: "Login with your credential wallet"
     loginExplain: "To login with your credential wallet, you will need to have the credential wallet app <with configurable URL to app stores> installed"
     appInstallExplain: "If you don't have a credential wallet yet, you can get one by downloading the credential wallet app <with configurable URL to app stores>"
@@ -259,37 +340,78 @@ customTranslateScript: https://translate.google.com/translate_a/element.js?cb=go
 ```
 
 #### Configuring Audit
-You can add auditing support to OpenCred to ensure that a VP token presented in the past was valid at the time it was presented. The VP token can be one of two formats: (1) JWT or (2) Data Integrity. In order to enable this feature, use the boolean field `enableAudit` and the array field `auditFields` in the config file:
+You can add auditing support to OpenCred to ensure that a VP token presented in the past was valid at the time it was presented. The VP token can be one of two formats: (1) JWT or (2) Data Integrity. In order to enable this feature, use the boolean field `audit.enable` and the array field `audit.fields` in the config file. Additionally, you may optionally configure the following fields: `reCaptcha.enable` (boolean), `reCaptcha.version` (number), `reCaptcha.siteKey` (string), `reCaptcha.secretKey` (string), and `reCaptcha.pages` (array) (more on these later). Here is a sample audit configuration:
 
 ```yaml
-enableAudit: true
-auditFields:
-  - type: text
-    id: given_name
-    name: First Name
-    path: "$.credentialSubject.given_name"
-    required: true
-  - type: text
-    id: family_name
-    name: Last Name
-    path: "$.credentialSubject.family_name"
-    required: false
-  - type: date
-    id: birth_date
-    name: Date of Birth
-    path: "$.credentialSubject.birth_date"
-    required: true
+audit:
+  enable: true
+  fields:
+    - type: text
+      id: given_name
+      name: First Name
+      path: "$.credentialSubject.given_name"
+      required: true
+    - type: text
+      id: family_name
+      name: Last Name
+      path: "$.credentialSubject.family_name"
+      required: false
+    - type: date
+      id: birth_date
+      name: Date of Birth
+      path: "$.credentialSubject.birth_date"
+      required: true
+    - type: number
+      id: height
+      name: Height (cm)
+      path: "$.credentialSubject.height"
+      required: false
+    - type: dropdown
+      id: sex
+      name: Sex
+      path: "$.credentialSubject.sex"
+      required: false
+      options:
+        "Male": 1
+        "Female": 2
+    - type: dropdown
+      id: senior_citizen
+      name: Are you a senior citizen?
+      path: "$.credentialSubject.senior_citizen"
+      required: true
+      options:
+        "Yes": 1
+        "No": null
+      default: "No"
+reCaptcha:
+  enable: true
+  version: 2
+  siteKey: 6LcNDSjdAAAAAAAAIe2uy0gavf0reiuhfer12345
+  secretKey: 6LcNDSjdAAAAAAAAIe3uy1gavf1reiuhfer67890
+  pages:
+    - audit
 ```
 
-The `enableAudit` field enables support for auditing in an OpenCred deployment.
+The `audit.enable` field enables support for auditing in an OpenCred deployment (default: `false`).
 If you would also like to check for matching values in the token's credential
 in a web interface, you can specify the following attributes for each
-field of interest via the `auditFields` field and visit `BASE_URL/audit-vp` in the browser:
-- `type` - the field type (currently, supports `text`, `number`, and `date`)
-- `id` - the field ID (can be anything, but must be unique among other fields)
-- `name` - the field name that appears in the web interface
-- `path` - the field path in the credential (must be unique among other fields)
-- `required` - whether the admin user is required to enter a value for the field in the web interface
+field of interest via the `audit.fields` field and visit `BASE_URL/audit-vp` in the browser:
+- `type` - The field type (currently, supports `text`, `number`, `date`, and `dropdown`).
+- `id` - The field ID (can be anything, but must be unique among other fields).
+- `name` - The field name that appears in the web interface.
+- `path` - The field path in the credential (must be unique among other fields).
+- `required` - Whether the admin user is required to enter a value for the field in the web interface.
+- `options` - Data binding from user-friendly name to associated value for the field in the web interface. This property is used whenever a field can have one of multiple possible machine-readable values in a discrete set of options (e.g., `Male` -> `1`, `Female` -> `2`). The input for this field will be presented as a dropdown selection element. If one of the options is the absence of the field from the credential, you can represent this by binding the field to `null`. For example, here are the expectations for each selection for the field named `Are you a senior citizen?` in the sample snippet above:
+  - `Yes` - There exists a field with path `$.credentialSubject.senior_citizen` containing value `1` in the credential.
+  - `No` - There does **not** exist a field with path `$.credentialSubject.senior_citizen` in the credential.
+- `default` - The default value for the field in the web interface (if not required). For a dropdown-type field, use the string label of the field, not the value.
+
+If you would like to enable reCAPTCHA in the audit web interface, you should specify the following fields after registering your OpenCred domain in the [reCAPTCHA registration page](https://www.google.com/recaptcha/admin/create) (Note: you may register `localhost` for local development):
+- `reCaptcha.enable` - Whether to enable reCAPTCHA (default: `false`).
+- `reCaptcha.version` - The version of reCAPTCHA that you registered for the domain (required if `reCaptcha.enable` is `true`). At the time of this writing, the only available versions are `2` and `3`.
+- `reCaptcha.siteKey` - The reCAPTCHA site key that you registered for the domain (required if `reCaptcha.enable` is `true`).
+- `reCaptcha.secretKey` - The reCAPTCHA secret key that you registered for the domain (required if `reCaptcha.enable` is `true`).
+- `reCaptcha.pages` - Array of page IDs for which to enable reCAPTCHA (`audit` in the case of the audit web interface).
 
 If you want to test out the audit feature, follow these steps:
 1. Run an instance of OpenCred using the instructions below.
@@ -462,7 +584,7 @@ The HTTP API workflow follows this process:
   expire after a 15 minutes and may be made available to a browser client,
   whereas the `clientId` should only be held server-side.
 * The response will contain an `exchange` object with a `state` that is either
-  `pending`, `complete`, or `invalid` with additional results.
+  `pending`, `active`, `complete`, or `invalid` with additional results.
 
 ## Testing
 

@@ -6,34 +6,51 @@ SPDX-License-Identifier: BSD-3-Clause
 -->
 
 <script setup>
-import {inject, onMounted} from 'vue';
-
 defineProps({
   title: {
     type: String,
     default: () => 'Error',
   },
-  error: {
+  subtitle: {
+    type: String,
+    default: () => 'The following error was encountered:',
+  },
+  message: {
     type: String,
     default: () => 'An error occurred.',
   },
+  resettable: {
+    type: Boolean,
+    default: () => false,
+  },
 });
-const $cookies = inject('$cookies');
 
-onMounted(() => {
-  $cookies.remove('accessToken');
-  $cookies.remove('exchangeId');
-});
+defineEmits(['reset']);
 </script>
 
 <template>
   <div class="p-4 md:p-5 space-y-2">
-    <h2 class="text-4xl font-extrabold">
+    <h2 class="text-3xl font-extrabold">
       {{title}}
     </h2>
 
+    <h4 class="text-xl font-extrabold">
+      {{subtitle}}
+    </h4>
+
     <p class="mb-4 text-lg font-normal text-gray-500">
-      {{error}}
+      {{message}}
     </p>
+
+    <div v-if="resettable">
+      <p class="mb-4 text-lg font-normal text-500">
+        {{$t('exchangeResetTitle')}}
+      </p>
+      <button
+        class="text-sm font-semibold text-blue-600 hover:text-blue-800"
+        @click="$emit('reset')">
+        {{$t('exchangeReset')}}
+      </button>
+    </div>
   </div>
 </template>

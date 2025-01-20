@@ -7,31 +7,51 @@ SPDX-License-Identifier: BSD-3-Clause
 
 <script setup>
 import {inject, onBeforeMount, onMounted, reactive, ref} from 'vue';
+import CHAPIView from './CHAPIView.vue';
 import {config} from '@bedrock/web';
 import {httpClient} from '@digitalbazaar/http-client';
+import OID4VPView from './OID4VPView.vue';
 import {setCssVar} from 'quasar';
 import {useHead} from 'unhead';
 import {useI18n} from 'vue-i18n';
+import {useRoute} from 'vue-router';
+
+const $cookies = inject('$cookies');
 
 let intervalId;
-const $cookies = inject('$cookies');
 const useNativeTranslations = ref(true);
-const vp = ref(null);
 const context = ref({
   rp: {
-    brand: config.brand,
-    rp: {
-      brand: config.brand
-    }
+    brand: config.brand
   }
 });
 
 const state = reactive({
   currentUXMethodIndex: 0,
+  active: false,
+  activeOverride: false,
+  exchange: null,
   error: null
 });
 
-const {locale, availableLocales} = useI18n({useScope: 'global'});
+/**
+ * Set state.error to the given error object, with defaults applied.
+ * @param {Object} error
+ * @param {string?} error.title
+ * @param {string?} error.message
+ * @param {boolean?} error.resettable
+ */
+const handleError = error => {
+  state.error = {
+    title: error?.title || 'Error',
+    subtitle: error?.subtitle || 'The following error was encountered:',
+    message: error?.message || 'An unexpected error occurred.',
+    resettable: !!error?.resettable || false
+  };
+};
+
+const route = useRoute();
+const {locale, availableLocales, t: translate} = useI18n({useScope: 'global'});
 
 const switchView = () => {
   state.currentUXMethodIndex = (state.currentUXMethodIndex + 1) %
@@ -39,9 +59,10 @@ const switchView = () => {
 };
 
 onBeforeMount(async () => {
+  const exchangeType = route.name;
   try {
     const resp = await httpClient.get(
-      `/context/login${window.location.search}`
+      `/context/${exchangeType}${window.location.search}`
     );
     context.value = resp.data;
     if(resp.data.rp.brand) {
@@ -53,15 +74,15 @@ onBeforeMount(async () => {
     const {status, data} = e;
     console.error('An error occurred while loading the application:', e);
     if(data && data.error_description) {
-      state.error = {
+      handleError({
         title: `${data.error} error`,
         message: data.error_description
-      };
+      });
     } else {
-      state.error = {
+      handleError({
         title: `Error code ${status}`,
         message: 'An error occurred while loading the application.'
-      };
+      });
     }
   }
 });
@@ -71,7 +92,7 @@ const changeLanguage = lang => {
 };
 
 const checkStatus = async () => {
-  if(!context.value) {
+  if(!context.value || !context.value.rp?.workflow?.id) {
     return;
   }
   if(state.error && intervalId) {
@@ -92,34 +113,63 @@ const checkStatus = async () => {
         }
       }
     ));
-    if(Object.keys(exchange).length > 0) {
-      const urlParams = new URLSearchParams(window.location.search);
-      const preventRedirect = urlParams.has('preventRedirect');
-      if(exchange.state === 'complete' && exchange.oidc?.code &&
-         !preventRedirect) {
-        const queryParams = new URLSearchParams({
-          state: context.value.exchangeData.oidc.state,
-          code: exchange.oidc.code,
-        });
-        const destination = `${context.value.rp.redirectUri}?` +
-          `${queryParams.toString()}`;
-        $cookies.remove('accessToken');
-        $cookies.remove('exchangeId');
-        window.location.href = destination;
-        intervalId = clearInterval(intervalId);
-      } else if(exchange.state === 'complete') {
-        const {verifiablePresentation} =
-          exchange.variables.results[exchange.step];
-        vp.value = verifiablePresentation;
-        intervalId = clearInterval(intervalId);
-      }
+    if(Object.keys(exchange).length > 0 && exchange.state === 'complete') {
+      state.exchange = exchange;
+      intervalId = clearInterval(intervalId);
+      $cookies.remove('accessToken');
+      $cookies.remove('exchangeId');
+    } else if(exchange.state === 'active' && !state.activeOverride) {
+      state.active = true;
+    } else if(exchange.state === 'invalid') {
+      handleError({
+        title: translate('exchangeErrorTitle'),
+        subtitle: translate('exchangeErrorSubtitle'),
+        message: Object.values(exchange.variables.results ?? {})
+          .filter(v => !!v.errors?.length)?.map(r => r.errors)
+          .flat()
+          .join(', ') ?? 'An error occurred while processing the exchange.',
+        resettable: true
+      });
+      intervalId = clearInterval(intervalId);
+      $cookies.remove('accessToken');
+      $cookies.remove('exchangeId');
     }
   } catch(e) {
-    const {status} = e;
     console.error('An error occurred while polling the endpoint:', e);
-    state.error = state.error = `Error code ${
-      status}: An error occurred while checking exchange status.`;
+    handleError({
+      title: 'Error',
+      message: 'An error occurred while checking exchange status.'
+    });
   }
+};
+
+const handleResetExchange = async () => {
+  state.active = true;
+  state.activeOverride = false;
+
+  try {
+    const resetResult = await httpClient.post(
+      `/workflows/${context.value.rp.workflow.id}/exchanges/` +
+    `${context.value.exchangeData.id}/reset`,
+      {
+        headers: {
+          Authorization: `Bearer ${context.value.exchangeData.accessToken}`
+        }
+      }
+    );
+    state.exchange = resetResult.data;
+    state.error = null;
+    intervalId = setInterval(checkStatus, 5000);
+  } catch(e) {
+    handleError({
+      title: 'Error',
+      message: 'An error occurred while resetting the exchange.'
+    });
+    // Fall through to clear the active state after causing the error to display
+  }
+
+  state.active = false;
+  state.activeOverride = false;
 };
 
 const replaceExchange = exchange => {
@@ -163,6 +213,7 @@ onMounted(async () => {
           :href="context.rp.primaryLink"
           class="flex items-center gap-3">
           <img
+            class="max-h-[50px]"
             :src="context.rp.primaryLogo"
             alt="logo-image">
         </a>
@@ -171,6 +222,7 @@ onMounted(async () => {
           :href="context.rp.secondaryLink"
           class="flex items-center gap-3">
           <img
+            class="max-h-[50px]"
             :src="context.rp.secondaryLogo"
             alt="logo-image">
         </a>
@@ -206,12 +258,11 @@ onMounted(async () => {
             </q-list>
           </q-btn-dropdown>
           <div
-            v-else
+            v-else-if="!useNativeTranslations"
             class="row items-center no-wrap gap-2 ">
             <span class="bg-white rounded-full p-1 flex">
               <TranslateIcon />
             </span>
-            <!-- {{true ? '<div>hello</div>' :'<google-translate />'}} -->
           </div>
         </div>
       </div>
@@ -234,21 +285,21 @@ onMounted(async () => {
 &nbsp;
         </div>
       </div>
-      <div v-if="vp">
-        <div class="flex justify-center">
-          <JsonView
-            :data="{ vp }"
-            title="Verified Credential" />
-        </div>
+      <div v-if="state.exchange?.state == 'complete'">
+        <router-view
+          :exchange="state.exchange"
+          :rp="context.rp" />
       </div>
       <div v-else-if="state.error">
         <div class="flex justify-center pt-8">
           <ErrorView
             :title="state.error.title"
-            :error="state.error.message" />
+            :message="state.error.message"
+            :resettable="state.error.resettable"
+            @reset="handleResetExchange" />
         </div>
       </div>
-      <ButtonView
+      <CHAPIView
         v-else-if="config.options.exchangeProtocols[state.currentUXMethodIndex]
           === 'chapi'"
         :chapi-enabled="true"
@@ -256,15 +307,20 @@ onMounted(async () => {
         :options="config.options"
         :exchange-data="context.exchangeData"
         @switch-view="switchView" />
-      <QRView
+      <!-- eslint-disable max-len -->
+      <OID4VPView
         v-else-if="config.options.exchangeProtocols[state.currentUXMethodIndex]
           === 'openid4vp'"
-        :brand="context.rp.brand"
+        :brand="context.rp?.brand"
         :exchange-data="context.exchangeData"
         :options="config.options"
+        :exchange-active-expiry-seconds="context.rp?.exchangeActiveExpirySeconds"
         :explainer-video="context.rp?.explainerVideo"
+        :active="state.active && !state.activeOverride"
         @switch-view="switchView"
+        @override-active="state.activeOverride = true"
         @replace-exchange="replaceExchange" />
+      <!-- eslint-enable max-len -->
     </main>
     <footer
       class="text-left p-3"

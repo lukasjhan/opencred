@@ -1,9 +1,10 @@
 {
-  "id": "z19k6s2E9wr29gb56t789AmFS",
+  "id": "z19k6s2E9wr33gb56t123AmFS",
   "sequence": 0,
   "ttl": 900,
   "state": "pending",
   "accessToken": "z19k6s2E9wr30gb56t789AmFS",
+  "apiAccessToken": "z19k6s2E9wr32gb56t543AmFS",
   "workflowId": "testworkflow",
   "variables": {
     "authorizationRequest": {

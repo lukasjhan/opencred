@@ -11,18 +11,20 @@ import * as polyfill from 'credential-handler-polyfill';
 import {config, extend} from '@bedrock/web';
 import {createRouter, createWebHistory} from 'vue-router';
 import App from './App.vue';
-import AppMain from './components/AppMain.vue';
 import AuditPresentation from './components/AuditPresentation.vue';
-import ButtonView from './components/ButtonView.vue';
+import CHAPIView from './components/CHAPIView.vue';
 import {createHead} from 'unhead';
 import {createI18n} from 'vue-i18n';
 import ErrorView from './components/ErrorView.vue';
 import {httpClient} from '@digitalbazaar/http-client';
 import JsonNode from './components/JsonNode.vue';
 import JsonView from './components/JsonView.vue';
+import LoginView from './components/LoginView.vue';
 import {Notify} from 'quasar';
-import QRView from './components/QRView.vue';
+import OID4VPView from './components/OID4VPView.vue';
+import TestPage from './components/TestPage.vue';
 import TranslateIcon from './components/TranslateIcon.vue';
+import VerificationView from './components/VerificationView.vue';
 import VueCookies from 'vue-cookies';
 import YouTubeVideo from './components/YouTubeVideo.vue';
 import '@quasar/extras/material-icons/material-icons.css';
@@ -30,18 +32,21 @@ import './styles.pcss';
 
 brVue.initialize({
   async beforeMount({app}) {
-    const {data: appConfig} = await httpClient.get('/config/app.json');
+    const {data: appConfig} =
+      await httpClient.get('/config/app.json' + window.location.search);
     extend({target: config, source: appConfig, deep: true});
 
-    app.component('AppMain', AppMain);
+    app.component('LoginView', LoginView);
     app.component('AuditPresentation', AuditPresentation);
-    app.component('QRView', QRView);
-    app.component('ButtonView', ButtonView);
+    app.component('OID4VPView', OID4VPView);
+    app.component('CHAPIView', CHAPIView);
     app.component('ErrorView', ErrorView);
     app.component('JsonNode', JsonNode);
     app.component('JsonView', JsonView);
     app.component('YouTubeVideo', YouTubeVideo);
     app.component('TranslateIcon', TranslateIcon);
+    app.component('TestPage', TestPage);
+    app.component('VerificationView', VerificationView);
 
     // ensure CHAPI is available
     await polyfill.loadOnce();
@@ -53,8 +58,21 @@ brVue.initialize({
     const router = createRouter({
       routes: [
         {
-          path: '/login',
-          component: () => import('./components/AppMain.vue'),
+          path: '/',
+          component: () => import('./components/ExchangeLayout.vue'),
+          props: true,
+          children: [
+            {
+              path: 'login',
+              name: 'login',
+              component: LoginView
+            },
+            {
+              path: 'verification',
+              name: 'verification',
+              component: VerificationView
+            }
+          ],
           meta: {
             title
           }
@@ -81,6 +99,7 @@ brVue.initialize({
     app.use(VueCookies);
 
     await brQuasar.initialize({app, quasarOptions: {
+      runMode: 'web-client',
       plugins: {
         Notify
       }

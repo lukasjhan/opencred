@@ -6,6 +6,14 @@
  */
 
 export const applyRpDefaults = (allRps, rp, refs = []) => {
+  if(rp.workflow) {
+    const {untrustedVariableAllowList} = rp.workflow;
+    rp.workflow.untrustedVariableAllowList =
+      untrustedVariableAllowList ? [...new Set([
+        ...untrustedVariableAllowList,
+        'redirectPath'
+      ])] : ['redirectPath'];
+  }
   if(rp.configFrom) {
     if(typeof rp.configFrom !== 'string') {
       throw new Error(`[${rp.clientId}]: configFrom must be a string`);

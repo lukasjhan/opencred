@@ -10,12 +10,29 @@ import CheckCircleIcon from 'vue-material-design-icons/CheckCircle.vue';
 import CloseCircleIcon from 'vue-material-design-icons/CloseCircle.vue';
 import {config} from '@bedrock/web';
 import {httpClient} from '@digitalbazaar/http-client';
+import ReCaptcha from './ReCaptcha.vue';
 import {ref} from 'vue';
 
+const NON_INPUT_TYPES = ['dropdown'];
+
+const enableAuditReCaptcha = config.reCaptcha.pages.includes('audit');
+
+const getDefaultValueForField = f => {
+  if(f.type == 'dropdown') {
+    return f.default ?
+      Object.entries(f.options ?? []).find(
+        v => v[0] == f.default)?.[1] :
+      undefined;
+  }
+  return f.default ?? undefined;
+};
+const mainContent = ref(null);
 const auditFieldValues = ref(
   Object.fromEntries(
-    config.auditFields
-      .map(f => [f.path, null])
+    config.audit.fields
+      .map(f => [
+        f.path, getDefaultValueForField(f)
+      ])
   )
 );
 
@@ -33,6 +50,33 @@ const auditResults = ref({
   },
   loading: false
 });
+
+const reCaptchaResults = ref({
+  loading: false,
+  verified: enableAuditReCaptcha ?
+    false :
+    true,
+  token: null
+});
+
+function onReCaptchaVerify(response) {
+  reCaptchaResults.value.verified = true;
+  reCaptchaResults.value.token = response;
+  reCaptchaResults.value.loading = false;
+  auditPresentation();
+}
+
+function onReCaptchaExpired() {
+  reCaptchaResults.value.loading = false;
+  reCaptchaResults.value.verified = false;
+  reCaptchaResults.value.token = null;
+}
+
+function onReCaptchaError() {
+  reCaptchaResults.value.loading = false;
+  reCaptchaResults.value.verified = false;
+  reCaptchaResults.value.token = null;
+}
 
 function toggleVpTokenInputType() {
   vpTokenInput.value.type =
@@ -56,16 +100,32 @@ function handleFileChange(event) {
   reader.readAsText(file);
 }
 
-async function auditPresentation() {
+async function requestSubmit() {
+  // prevent double submission
+  if(reCaptchaResults.value.loading) {
+    return;
+  }
+
+  // disable button while checking
+  reCaptchaResults.value.loading = true;
+  reCaptchaResults.value.verified = false;
   clearAuditResults();
-  auditResults.value.loading = true;
+}
+
+async function auditPresentation() {
+  // Prevent submission if recaptcha is still going
+  if(!reCaptchaResults.value.verified) {
+    return;
+  }
+
   let response;
   try {
     response = await httpClient.post(
       '/audit-presentation', {
         json: {
-          vpToken: vpTokenInput.value.data.trim(),
-          fields: auditFieldValues.value
+          vpToken: vpTokenInput.value.data.replace(/\s+/g, ''),
+          fields: auditFieldValues.value,
+          reCaptchaToken: reCaptchaResults.value.token
         }
       }
     );
@@ -74,6 +134,7 @@ async function auditPresentation() {
     auditResults.value.data = error.data;
   } finally {
     auditResults.value.loading = false;
+    mainContent.value.scrollIntoView({behavior: 'smooth'});
   }
 }
 
@@ -92,15 +153,20 @@ function clearAuditResults() {
 <template>
   <div class="flex flex-col">
     <main
+      ref="mainContent"
       class="main relative flex-grow mt-20">
       <form
-        v-if="config.auditFields && config.auditFields.length > 0"
+        v-if="config.audit.fields && config.audit.fields.length > 0"
         class="px-6 py-8 border rounded"
-        @submit.prevent="auditPresentation">
-        <h1 class="text-center text-xl font-bold">
+        @submit.prevent="requestSubmit">
+        <h1
+          class="text-center text-xl font-bold mb-3">
           Audit Verifiable Presentation
         </h1>
-        <p class="text-lg mt-6 mb-3">
+        <p class="required-asterisk mb-6">
+          * Required
+        </p>
+        <p class="text-lg mb-3">
           Please provide the VP token
           that you would like to audit.
         </p>
@@ -109,6 +175,7 @@ function clearAuditResults() {
             for="vpToken"
             class="font-md font-bold mr-5">
             VP Token
+            <span class="required-asterisk">*</span>
           </label>
           <button
             class="text-white py-2 px-2 my-8 mr-5 rounded-xl"
@@ -158,7 +225,7 @@ function clearAuditResults() {
         <div class="container">
           <ul>
             <li
-              v-for="field in config.auditFields"
+              v-for="field in config.audit.fields"
               :key="field.id">
               <div
                 :class="
@@ -169,16 +236,36 @@ function clearAuditResults() {
                       'row mb-5'">
                 <label
                   :for="[field.id]"
-                  class="col-2 font-md font-bold mr-3">
+                  class="col-3 font-md font-bold mr-3">
                   {{field.name}}
+                  <span
+                    v-if="field.required"
+                    class="required-asterisk">*</span>
                 </label>
                 <input
+                  v-if="!NON_INPUT_TYPES.includes(field.type)"
                   :id="field.id"
                   v-model="auditFieldValues[field.path]"
                   :type="field.type"
                   class="col-6 font-md border rounded px-2 py-2 mr-5"
-                  :placeholder="field.required ? 'Required' : 'Optional'"
                   :required="field.required">
+                <select
+                  v-else-if="field.type === 'dropdown'"
+                  v-model="auditFieldValues[field.path]"
+                  class="col-6 font-md border rounded px-2 py-2 mr-5"
+                  :required="field.required">
+                  <option
+                    disabled
+                    value="">
+                    Please select one
+                  </option>
+                  <option
+                    v-for="option in Object.entries(field.options)"
+                    :key="option[0]"
+                    :value="option[1]">
+                    {{option[0]}}
+                  </option>
+                </select>
                 <div
                   v-if="Object.entries(auditResults.data.matches).length > 0 &&
                     !auditResults.loading"
@@ -208,7 +295,8 @@ function clearAuditResults() {
           type="submit"
           class="centered-x text-white text-lg font-bold
             rounded-xl py-3 px-6 mt-5"
-          :style="{ background: '#0979c4' }">
+          :style="{ background: '#0979c4' }"
+          :disabled="reCaptchaResults.loading || auditResults.loading">
       </form>
       <div
         v-if="auditResults.loading"
@@ -225,6 +313,17 @@ function clearAuditResults() {
     <footer
       class="footer text-left p-3"
       v-html="config.translations[config.defaultLanguage].copyright" />
+    <div
+      v-if="reCaptchaResults.loading"
+      class="recaptcha">
+      <ReCaptcha
+        :version="config.reCaptcha.version"
+        :site-key="config.reCaptcha.siteKey"
+        action="audit"
+        @verify="onReCaptchaVerify"
+        @expired="onReCaptchaExpired"
+        @error="onReCaptchaError" />
+    </div>
   </div>
 </template>
 
@@ -267,5 +366,14 @@ function clearAuditResults() {
   max-width: 500px;
   word-wrap: break-word;
   overflow-wrap: break-word;
+}
+.required-asterisk {
+  color: red;
+  font-weight: bold;
+}
+.recaptcha {
+  position: fixed;
+  bottom: 10%;
+  right: 10%
 }
 </style>

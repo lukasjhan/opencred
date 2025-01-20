@@ -18,6 +18,7 @@ import {
 } from 'did-jwt-vc';
 import base64url from 'base64url';
 import {ConfidentialClientApplication} from '@azure/msal-node';
+import {decodeJwt} from 'jose';
 import {didResolver} from './documentLoader.js';
 import {generateId} from 'bnid';
 import {httpClient} from '@digitalbazaar/http-client';
@@ -36,18 +37,53 @@ export const createId = async (bitLength = 128) => {
   return id;
 };
 
-export const decodeJwtPayload = jwtToken => {
-  const [, encodedPayloadString] = jwtToken.split('.');
-  const decodedPayloadString = base64url.decode(encodedPayloadString);
-  return JSON.parse(decodedPayloadString);
+export const isValidJwt = jwt => {
+  try {
+    decodeJwt(jwt);
+    return true;
+  } catch(error) {
+    return false;
+  }
+};
+
+export const isValidJson = json => {
+  if(typeof json === 'object') {
+    return !Array.isArray(json);
+  }
+  try {
+    if(typeof json === 'string') {
+      JSON.parse(json);
+      return true;
+    }
+    return false;
+  } catch(error) {
+    return false;
+  }
+};
+
+export const getValidJson = json => {
+  if(typeof json === 'object') {
+    if(Array.isArray(json)) {
+      return null;
+    }
+    return json;
+  }
+  try {
+    if(typeof json === 'string') {
+      return JSON.parse(json);
+    }
+    return null;
+  } catch(error) {
+    return null;
+  }
 };
 
 const _convertJwtVcTokenToDiVcs = vcTokens => {
-  return vcTokens.map(t => decodeJwtPayload(t).vc);
+  return vcTokens.map(t => decodeJwt(t).vc);
 };
 
 export const convertJwtVpTokenToDiVp = vpToken => {
-  const decodedVpPayloadWithEncodedVcs = decodeJwtPayload(vpToken).vp;
+  const decodedVpPayloadWithEncodedVcs = decodeJwt(vpToken).vp;
   const decodedVpPayload = {
     ...decodedVpPayloadWithEncodedVcs,
     verifiableCredential: _convertJwtVcTokenToDiVcs(
@@ -249,4 +285,64 @@ export const msalUtils = {
   getMsalClient,
   acquireAccessToken,
   makeHttpPostRequest
+};
+
+// Presentation Logging Utilities
+
+// Domain of values for presentation event
+const PresentationEvent = {
+  PresentationStart: 'presentation_start',
+  PresentationSuccess: 'presentation_success',
+  PresentationError: 'presentation_error'
+};
+
+// Presentation event log name
+const PRESENTATION_EVENT_LOG_NAME = 'presentation_event';
+
+const getPresentationEvent = (eventType, clientId, exchangeId, error) => {
+  return {
+    type: eventType,
+    clientId: clientId ?? 'unknown',
+    exchangeId: exchangeId ?? 'unknown',
+    error
+  };
+};
+
+/**
+ * Gets a consistent presentation start event object.
+ * @param {string | undefined} clientId the relying party identifier
+ * @returns {object}
+ */
+const presentationStart = (clientId, exchangeId) => {
+  const startEvent = getPresentationEvent(
+    PresentationEvent.PresentationStart, clientId, exchangeId);
+  logger.info(PRESENTATION_EVENT_LOG_NAME, startEvent);
+};
+
+/**
+ * Gets a consistent presentation success event object.
+ * @param {string | undefined} clientId the relying party identifier
+ * @returns {object}
+ */
+const presentationSuccess = (clientId, exchangeId) => {
+  const successEvent = getPresentationEvent(
+    PresentationEvent.PresentationSuccess, clientId, exchangeId);
+  logger.info(PRESENTATION_EVENT_LOG_NAME, successEvent);
+};
+
+/**
+ * Gets a consistent presentation error event object.
+ * @param {string | undefined} clientId the relying party identifier
+ * @returns {object}
+ */
+const presentationError = (clientId, exchangeId, error) => {
+  const errorEvent = getPresentationEvent(
+    PresentationEvent.PresentationError, clientId, exchangeId, error);
+  logger.info(PRESENTATION_EVENT_LOG_NAME, errorEvent);
+};
+
+export const logUtils = {
+  presentationStart,
+  presentationSuccess,
+  presentationError
 };
